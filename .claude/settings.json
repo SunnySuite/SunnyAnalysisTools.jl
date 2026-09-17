@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Read(//home/uud/.claude/plans/**)",
+      "Bash(git stash *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git checkout *)",
+      "Bash(cp ~/.claude/projects/-home-uud--julia-dev-SunnyAnalysisTools/memory/*.md .claude-transfer/)",
+      "Bash(cp ~/.claude/plans/steady-hopping-blanket.md .claude-transfer/)",
+      "WebFetch(domain:docs.mantidproject.org)",
+      "WebFetch(domain:pmc.ncbi.nlm.nih.gov)"
+    ]
+  }
+}

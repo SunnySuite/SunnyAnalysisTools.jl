@@ -150,14 +150,18 @@ function _pychop_distances(cs)
     return (x0, Float64(cs["chop_sam"]), Float64(cs["sam_det"]), xm)
 end
 
-# The resolution-chopper's running frequency: frequency_matrix * default_frequencies
+# The resolution-chopper's running frequency: frequency_matrix * frequencies
 # + constant_frequencies, matching PyChop's ChopperSystem._long_frequency.
-function _pychop_final_frequency(cs)
+# `freq`, if given, overrides `default_frequencies` (same shape/units as that
+# yaml field) -- this is how PyChop's setChopper(package, freq) lets the user
+# pick the independent chopper frequency/frequencies instead of taking the
+# instrument's default.
+function _pychop_final_frequency(cs, freq=nothing)
     fm = cs["frequency_matrix"]
-    fdef = Float64.(cs["default_frequencies"])
+    fvals = isnothing(freq) ? Float64.(cs["default_frequencies"]) : Float64.(freq)
     f0 = haskey(cs, "constant_frequencies") ? Float64.(cs["constant_frequencies"]) : zeros(length(fm))
     row = Float64.(fm[end])
-    return sum(row .* fdef) + f0[end]
+    return sum(row .* fvals) + f0[end]
 end
 
 # Assembles a DirectGeometrySpec from the distances/widths above, applying
@@ -171,20 +175,31 @@ function _direct_geometry_spec(name, Ei, Δθ_deg, x0, x1, x2, xm, Δtp_raw, Δt
 end
 
 """
-    cncs(; Ei, variant, Δθ=1.5)
+    cncs(; Ei, variant, freq=nothing, Δθ=1.5)
 
 Build a `DirectGeometrySpec` for the CNCS direct-geometry spectrometer at
 SNS. `variant` selects the resolution disk chopper's slot width and must be
 one of CNCS's defined variants (e.g. `"High Flux"`, `"Intermediate"`,
 `"High Resolution"`); an informative error listing the valid names is raised
-if it is omitted or not recognized. `Δθ` is the beam angular divergence in
-degrees.
+if it is omitted or not recognized. `freq` overrides the resolution disk
+(Chopper 4) frequency in Hz (default: 300 Hz); an error is raised if it
+exceeds the chopper's maximum frequency. CNCS's other independent frequency,
+the Fermi chopper (Chopper 1), is left at its default since it does not
+enter into the resolution calculation. `Δθ` is the beam angular divergence
+in degrees.
 """
-function cncs(; Ei, variant=nothing, Δθ=1.5)
+function cncs(; Ei, variant=nothing, freq=nothing, Δθ=1.5)
     data = _pychop_data("cncs")
     cs = data["chopper_system"]
     variants = get(cs, "variants", Dict())
     _check_option(variant, keys(variants), "CNCS chopper variant")
+
+    if !isnothing(freq)
+        maxfreq = get(cs, "max_frequencies", nothing)
+        if !isnothing(maxfreq) && freq > maxfreq[1]
+            throw(ArgumentError("CNCS resolution disk frequency $freq Hz exceeds maximum of $(maxfreq[1]) Hz"))
+        end
+    end
 
     x0, x1, x2, xm = _pychop_distances(cs)
 
@@ -199,8 +214,9 @@ function cncs(; Ei, variant=nothing, Δθ=1.5)
         radius = get(override[end], "radius", radius)
     end
 
-    freq = _pychop_final_frequency(cs)
-    Δtc = _disk_chopper_fwhm(freq, slot_width, guide_width, radius, numDisk)
+    freqvec = isnothing(freq) ? nothing : [freq, Float64(cs["default_frequencies"][2])]
+    resfreq = _pychop_final_frequency(cs, freqvec)
+    Δtc = _disk_chopper_fwhm(resfreq, slot_width, guide_width, radius, numDisk)
     Δtp_raw = _moderator_fwhm(data["moderator"], Ei)
 
     return _direct_geometry_spec("CNCS", Ei, Δθ, x0, x1, x2, xm, Δtp_raw, Δtc)
@@ -208,15 +224,24 @@ end
 
 # Shared by hyspec/sequoia/arcs, which are all single-Fermi-chopper direct
 # geometry instruments differing only in their yaml data and available
-# chopper packages.
-function _fermi_instrument(name; Ei, package, Δθ)
+# chopper packages. Each of these instruments has a single independent
+# chopper frequency (the Fermi chopper's), so `freq`, if given, is a scalar
+# in Hz overriding the instrument's default_frequencies entry.
+function _fermi_instrument(name; Ei, package, freq=nothing, Δθ)
     data = _pychop_data(lowercase(name))
     cs = data["chopper_system"]
     packages = cs["choppers"][end]["packages"]
     _check_option(package, keys(packages), "$name Fermi chopper package")
 
+    if !isnothing(freq)
+        maxfreq = get(cs, "max_frequencies", nothing)
+        if !isnothing(maxfreq) && freq > maxfreq[1]
+            throw(ArgumentError("$name chopper frequency $freq Hz exceeds maximum of $(maxfreq[1]) Hz"))
+        end
+    end
+
     x0, x1, x2, xm = _pychop_distances(cs)
-    freq = _pychop_final_frequency(cs)
+    freq = _pychop_final_frequency(cs, isnothing(freq) ? nothing : [freq])
     pkg = packages[package]
     Δtc = _fermi_chopper_fwhm(freq, Ei, pkg["pslit"]/1000, pkg["radius"]/1000, pkg["rho"]/1000)
     Δtp_raw = _moderator_fwhm(data["moderator"], Ei)
@@ -225,34 +250,40 @@ function _fermi_instrument(name; Ei, package, Δθ)
 end
 
 """
-    hyspec(; Ei, package, Δθ=1.5)
+    hyspec(; Ei, package, freq=nothing, Δθ=1.5)
 
 Build a `DirectGeometrySpec` for the HYSPEC direct-geometry spectrometer at
 SNS. `package` selects the Fermi chopper package and must be one of HYSPEC's
 defined packages; an informative error listing the valid names is raised if
-it is omitted or not recognized. `Δθ` is the beam angular divergence in
-degrees.
+it is omitted or not recognized. `freq` overrides the Fermi chopper
+frequency in Hz (default: HYSPEC's nominal 180 Hz); an error is raised if it
+exceeds the chopper's maximum frequency. `Δθ` is the beam angular divergence
+in degrees.
 """
-hyspec(; Ei, package=nothing, Δθ=1.5) = _fermi_instrument("HYSPEC"; Ei, package, Δθ)
+hyspec(; Ei, package=nothing, freq=nothing, Δθ=1.5) = _fermi_instrument("HYSPEC"; Ei, package, freq, Δθ)
 
 """
-    sequoia(; Ei, package, Δθ=1.5)
+    sequoia(; Ei, package, freq=nothing, Δθ=1.5)
 
 Build a `DirectGeometrySpec` for the SEQUOIA direct-geometry spectrometer at
 SNS. `package` selects the Fermi chopper package (e.g. `"Fine"`, `"Sloppy"`)
 and must be one of SEQUOIA's defined packages; an informative error listing
-the valid names is raised if it is omitted or not recognized. `Δθ` is the
-beam angular divergence in degrees.
+the valid names is raised if it is omitted or not recognized. `freq`
+overrides the Fermi chopper frequency in Hz (default: SEQUOIA's nominal 300
+Hz); an error is raised if it exceeds the chopper's maximum frequency. `Δθ`
+is the beam angular divergence in degrees.
 """
-sequoia(; Ei, package=nothing, Δθ=1.5) = _fermi_instrument("SEQUOIA"; Ei, package, Δθ)
+sequoia(; Ei, package=nothing, freq=nothing, Δθ=1.5) = _fermi_instrument("SEQUOIA"; Ei, package, freq, Δθ)
 
 """
-    arcs(; Ei, package, Δθ=1.5)
+    arcs(; Ei, package, freq=nothing, Δθ=1.5)
 
 Build a `DirectGeometrySpec` for the ARCS direct-geometry spectrometer at
 SNS. `package` selects the Fermi chopper package and must be one of ARCS's
 defined packages; an informative error listing the valid names is raised if
-it is omitted or not recognized. `Δθ` is the beam angular divergence in
-degrees.
+it is omitted or not recognized. `freq` overrides the Fermi chopper
+frequency in Hz (default: ARCS's nominal 300 Hz); an error is raised if it
+exceeds the chopper's maximum frequency. `Δθ` is the beam angular divergence
+in degrees.
 """
-arcs(; Ei, package=nothing, Δθ=1.5) = _fermi_instrument("ARCS"; Ei, package, Δθ)
+arcs(; Ei, package=nothing, freq=nothing, Δθ=1.5) = _fermi_instrument("ARCS"; Ei, package, freq, Δθ)
