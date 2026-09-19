@@ -46,7 +46,7 @@ using Test
 
     @testset "Direct geometry instruments" begin
         for (f, kwargs) in [(cncs, (variant="High Flux",)), (hyspec, (package="OnlyOne",)),
-                             (sequoia, (package="Sloppy",)), (arcs, (package="ARCS-100-1.5-AST",))]
+                             (sequoia, (package="High-Flux",)), (arcs, (package="ARCS-100-1.5-AST",))]
             spec = f(; Ei=20.0, kwargs...)
             @test spec isa DirectGeometrySpec
             for field in (:L1, :L2, :L3, :Δtp, :Δtc, :Δθ)

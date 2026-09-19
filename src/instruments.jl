@@ -266,8 +266,8 @@ hyspec(; Ei, package=nothing, freq=nothing, Δθ=1.5) = _fermi_instrument("HYSPE
     sequoia(; Ei, package, freq=nothing, Δθ=1.5)
 
 Build a `DirectGeometrySpec` for the SEQUOIA direct-geometry spectrometer at
-SNS. `package` selects the Fermi chopper package (e.g. `"Fine"`, `"Sloppy"`)
-and must be one of SEQUOIA's defined packages; an informative error listing
+SNS. `package` selects the Fermi chopper package (e.g. `"High-Resolution"`,
+`"High-Flux"`) and must be one of SEQUOIA's defined packages; an informative error listing
 the valid names is raised if it is omitted or not recognized. `freq`
 overrides the Fermi chopper frequency in Hz (default: SEQUOIA's nominal 300
 Hz); an error is raised if it exceeds the chopper's maximum frequency. `Δθ`

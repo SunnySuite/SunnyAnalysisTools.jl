@@ -9,7 +9,7 @@ function nonstationary_gaussian(instrument::DirectGeometrySpec; intrinsic_width=
 
     # Calculate the resolution kernel at some representative points.
     Es = range(-Ei, Ei, 200)
-    dEs = [FWHM_to_sigma*energy_resolution(Ei, E, L1, L2, L3, Δtp, Δtd, Δtc) for E in Es]
+    dEs = [FWHM_to_sigma*energy_resolution(Ei, E, L1, L2, L3, Δtp, Δtc, Δtd) for E in Es]
     dEs = map(dEs) do dE
         sqrt(dE^2 + intrinsic_width^2)
     end
@@ -21,7 +21,7 @@ function nonstationary_gaussian(instrument::DirectGeometrySpec; intrinsic_width=
 
     return Sunny.NonstationaryBroadening((b, ω) -> exp(-(ω-b)^2/2sigma(b)^2) / √(2π*sigma(b)^2))
 end
-# σ = FWHM_to_sigma*SunnyAnalysisTools.energy_resolution(Ei, μ > Ei ? Ei : μ, L1, L2, L3, Δtp, Δtd, Δtc)
+# σ = FWHM_to_sigma*SunnyAnalysisTools.energy_resolution(Ei, μ > Ei ? Ei : μ, L1, L2, L3, Δtp, Δtc, Δtd)
 # σ_tot = sqrt(σ^2 + λ^2)
 
 
