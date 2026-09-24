@@ -23,7 +23,7 @@ function calculate_intensities(swt::Sunny.AbstractSpinWaveTheory, broadening_spe
     kwargs...
 )
     (; qpoints, epoints, qidcs, eidcs, qkernel, ekernel, binning) = broadening_spec
-    (; qcenters, Es, binvol, crystvol) = binning
+    (; qcenters, Es) = binning
 
     # Calculate intensities for all points in subsuming grid around bin.
     res = Sunny.intensities(swt, qpoints[:]; energies=epoints, kernel=ekernel, kwargs...)
@@ -40,7 +40,9 @@ function calculate_intensities(swt::Sunny.AbstractSpinWaveTheory, broadening_spe
     data_conv = real.(ifft(data_ft, (2, 3, 4)))
 
     # Sum over samples that lie within each bin and normalize by number of
-    # samples.
+    # samples. The result is the bin average (an intensity density), not
+    # multiplied by bin volume, so it is directly comparable to MDNorm/Shiver
+    # histograms across cuts with different binnings.
     res = zeros(length(Es), size(qcenters)...)
     for i in CartesianIndices(qcenters), j in eachindex(Es)
         for (ei, qi) in Iterators.product(eidcs[j], qidcs[i])
@@ -48,7 +50,6 @@ function calculate_intensities(swt::Sunny.AbstractSpinWaveTheory, broadening_spe
         end
         res[j, i] /= length(eidcs[j]) * length(qidcs[i])
     end
-    res .*= binvol
 
     apply_observation_nan_mask!(res, observation)
 
@@ -65,7 +66,7 @@ function calculate_intensities(swt::Sunny.AbstractSpinWaveTheory, broadening_spe
     kwargs...
 )
     (; qpoints, epoints, qidcs, eidcs, ekernel, binning) = broadening_spec
-    (; qcenters, Es, binvol) = binning
+    (; qcenters, Es) = binning
 
     dispersion_and_intensities = Sunny.intensities_bands(swt, qpoints[:])
     if unit_intensity
@@ -77,12 +78,11 @@ function calculate_intensities(swt::Sunny.AbstractSpinWaveTheory, broadening_spe
     data = reshape(res.data, (length(epoints), size(qpoints)...))
 
     # Sum over samples that lie within each bin and normalize by number of
-    # samples.
+    # samples (bin average; see StationaryQConvolution).
     res = zeros(length(Es), size(qcenters)...)
     for i in CartesianIndices(qcenters), j in eachindex(Es)
         res[j, i] = accumulate_bin_average(data, eidcs[j], qidcs[i])
     end
-    res .*= abs(binvol)
 
     apply_observation_nan_mask!(res, observation)
 
@@ -98,7 +98,7 @@ function calculate_intensities_domains(swt::Sunny.AbstractSpinWaveTheory, broade
     kwargs...
 )
     (; qpoints, epoints, qidcs, eidcs, ekernel, binning) = broadening_spec
-    (; qcenters, Es, binvol) = binning
+    (; qcenters, Es) = binning
 
     R0, Rs... = Sunny.rotation_in_rlu.(Ref(binning.crystal), rotations)
     w0, ws... = weights
@@ -110,7 +110,7 @@ function calculate_intensities_domains(swt::Sunny.AbstractSpinWaveTheory, broade
     for i in CartesianIndices(qcenters), j in eachindex(Es)
         res[j, i] = accumulate_bin_average(data, eidcs[j], qidcs[i])
     end
-    res .*= abs(binvol) * w0
+    res .*= w0
 
     for (R, w) in zip(Rs, ws)
         dispersion_and_intensities = Sunny.intensities_bands(swt, map(q -> R*q, qpoints[:]))
@@ -120,7 +120,7 @@ function calculate_intensities_domains(swt::Sunny.AbstractSpinWaveTheory, broade
         for i in CartesianIndices(qcenters), j in eachindex(Es)
             res_loc[j, i] = accumulate_bin_average(data, eidcs[j], qidcs[i])
         end
-        res_loc .*= abs(binvol) * w
+        res_loc .*= w
         res .+= res_loc
     end
 
@@ -144,7 +144,7 @@ function calculate_intensities(swt::Sunny.AbstractSpinWaveTheory, broadening_spe
     kwargs...
 )
     (; binning, nqpoints, nepoints, rng, ekernel) = broadening_spec
-    (; qcenters, Es, binvol, directions, Δs) = binning
+    (; qcenters, Es, directions, Δs) = binning
 
     bounds = [(-Δ/2, Δ/2) for Δ in Δs[1:3]]
     ΔE = Δs[4]
@@ -187,7 +187,6 @@ function calculate_intensities(swt::Sunny.AbstractSpinWaveTheory, broadening_spe
             res[j, i] = accumulate_bin_average(data, erows, eachindex(qsamples))
         end
     end
-    res .*= abs(binvol)
 
     apply_observation_nan_mask!(res, observation)
 

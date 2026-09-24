@@ -44,6 +44,29 @@ using Test
         @test spec.rng isa AbstractRNG
     end
 
+    @testset "Bin intensities are bin averages (independent of bin volume)" begin
+        # Ferromagnetic chain: smooth dispersion along a*.
+        crystal = Sunny.Crystal(Sunny.lattice_vectors(3.0, 8.0, 8.0, 90, 90, 90), [[0.0, 0.0, 0.0]])
+        sys = Sunny.System(crystal, [1 => Sunny.Moment(s=1, g=2)], :dipole)
+        Sunny.set_exchange!(sys, -1.0, Sunny.Bond(1, 1, [1, 0, 0]))
+        Sunny.randomize_spins!(sys)
+        Sunny.minimize_energy!(sys)
+        swt = Sunny.SpinWaveTheory(sys; measure=Sunny.ssf_perp(sys))
+        ekernel = Sunny.gaussian(fwhm=1.0)
+        directions = Matrix{Float64}(I, 3, 3)
+
+        # One coarse bin sampled 2x per axis hits exactly the same points as
+        # the 2^4 fine bins (sampled 1x per axis) that tile it, so the coarse
+        # value must equal the mean of the fine values.
+        coarse = UniformBinning(crystal, directions, [0.2], [0.1], [0.1], [1.5], [0.2, 0.2, 0.2, 1.0])
+        fine = UniformBinning(crystal, directions, [0.15, 0.25], [0.05, 0.15], [0.05, 0.15], [1.25, 1.75], [0.1, 0.1, 0.1, 0.5])
+
+        calc_coarse = calculate_intensities(swt, UniformSampling(coarse, ekernel; nperqbin=2, nperebin=2))
+        calc_fine = calculate_intensities(swt, UniformSampling(fine, ekernel; nperqbin=1, nperebin=1))
+        @test size(calc_fine.data) == (2, 2, 2, 2)
+        @test calc_coarse.data[1] ≈ sum(calc_fine.data) / length(calc_fine.data)
+    end
+
     @testset "Direct geometry instruments" begin
         for (f, kwargs) in [(cncs, (variant="High Flux",)), (hyspec, (package="OnlyOne",)),
                              (sequoia, (package="High-Flux",)), (arcs, (package="ARCS-100-1.5-AST",))]
